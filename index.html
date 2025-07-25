@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Registro de Asistencia</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        input, button {
+            padding: 10px;
+            margin: 10px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #resultado {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f8f8f8;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>📅 Registro de Asistencia</h1>
+    <p>Por favor ingresa tu nombre para registrar tu asistencia con ubicación</p>
+    
+    <input type="text" id="nombre" placeholder="Tu nombre completo" required>
+    <button onclick="registrarAsistencia()">📍 Registrar Mi Asistencia</button>
+    
+    <div id="resultado"></div>
+
+    <script>
+        function registrarAsistencia() {
+            const nombre = document.getElementById('nombre').value;
+            
+            if (!nombre) {
+                alert("Por favor ingresa tu nombre");
+                return;
+            }
+
+            const fechaHora = new Date().toLocaleString();
+            const resultado = document.getElementById('resultado');
+            
+            resultado.innerHTML = "Obteniendo ubicación... ⌛";
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        const mapaUrl = `https://maps.google.com/?q=${lat},${lng}`;
+                        
+                        // Mostrar confirmación al usuario
+                        resultado.innerHTML = `
+                            <h3>✅ Asistencia registrada</h3>
+                            <p><strong>Nombre:</strong> ${nombre}</p>
+                            <p><strong>Fecha/Hora:</strong> ${fechaHora}</p>
+                            <p><strong>Ubicación:</strong> <a href="${mapaUrl}" target="_blank">Ver en mapa</a></p>
+                            <p>Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}</p>
+                        `;
+                        
+                        // Aquí puedes agregar el código para enviar los datos a tu servidor/email
+                        enviarDatos(nombre, fechaHora, lat, lng);
+                    },
+                    function(error) {
+                        let mensajeError = "";
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                mensajeError = "Debes permitir el acceso a la ubicación para registrar asistencia";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                mensajeError = "La información de ubicación no está disponible";
+                                break;
+                            case error.TIMEOUT:
+                                mensajeError = "Tiempo de espera para obtener la ubicación agotado";
+                                break;
+                            case error.UNKNOWN_ERROR:
+                                mensajeError = "Ocurrió un error desconocido";
+                                break;
+                        }
+                        resultado.innerHTML = `<p style="color:red;">❌ Error: ${mensajeError}</p>`;
+                    }
+                );
+            } else {
+                resultado.innerHTML = "<p style='color:red;'>Tu navegador no soporta geolocalización</p>";
+            }
+        }
+        
+        function enviarDatos(nombre, fechaHora, lat, lng) {
+            // Usaremos FormSubmit.co para enviar los datos por email
+            const formData = new FormData();
+            formData.append('nombre', nombre);
+            formData.append('fechaHora', fechaHora);
+            formData.append('ubicacion', `https://maps.google.com/?q=${lat},${lng}`);
+            formData.append('coordenadas', `${lat},${lng}`);
+            
+            fetch('https://formsubmit.co/ajax/sbalderas@arseg.com.mx', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => console.log('Datos enviados:', data))
+            .catch(error => console.error('Error:', error));
+        }
+    </script>
+</body>
+</html>
