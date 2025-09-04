@@ -1,120 +1,210 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <title>Registro de Asistencia</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 500px;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        input, button {
-            padding: 10px;
-            margin: 10px 0;
-            width: 100%;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        #resultado {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #f8f8f8;
-            border-radius: 5px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Registro de Asistencia</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+    }
+    input, button {
+      padding: 10px;
+      margin: 10px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #resultado {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f8f8f8;
+      border-radius: 5px;
+      text-align: left;
+    }
+    .muted { color:#666; font-size: 12px; }
+    .error { color: #b00020; }
+    .ok    { color: #0b7a0b; }
+    .row   { margin: 6px 0; }
+  </style>
 </head>
 <body>
-    <h1>📅 Registro de Asistencia</h1>
-    <p>Por favor ingresa tu nombre para registrar tu asistencia con ubicación</p>
-    
-    <input type="text" id="nombre" placeholder="Tu nombre completo" required>
-    <button onclick="registrarAsistencia()">📍 Registrar Mi Asistencia</button>
-    
-    <div id="resultado"></div>
+  <h1>📅 Registro de Asistencia</h1>
+  <p>Ingresa tu nombre para registrar tu asistencia con ubicación e IP pública</p>
 
-    <script>
-        function registrarAsistencia() {
-            const nombre = document.getElementById('nombre').value;
-            
-            if (!nombre) {
-                alert("Por favor ingresa tu nombre");
-                return;
-            }
+  <input type="text" id="nombre" placeholder="Tu nombre completo" required />
+  <button id="btn-registrar">📍 Registrar Mi Asistencia</button>
 
-            const fechaHora = new Date().toLocaleString();
-            const resultado = document.getElementById('resultado');
-            
-            resultado.innerHTML = "Obteniendo ubicación... ⌛";
+  <div id="resultado"></div>
 
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    function(position) {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        const mapaUrl = `https://maps.google.com/?q=${lat},${lng}`;
-                        
-                        // Mostrar confirmación al usuario
-                        resultado.innerHTML = `
-                            <h3>✅ Asistencia registrada</h3>
-                            <p><strong>Nombre:</strong> ${nombre}</p>
-                            <p><strong>Fecha/Hora:</strong> ${fechaHora}</p>
-                            <p><strong>Ubicación:</strong> <a href="${mapaUrl}" target="_blank">Ver en mapa</a></p>
-                            <p>Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}</p>
-                        `;
-                        
-                        // Aquí puedes agregar el código para enviar los datos a tu servidor/email
-                        enviarDatos(nombre, fechaHora, lat, lng);
-                    },
-                    function(error) {
-                        let mensajeError = "";
-                        switch(error.code) {
-                            case error.PERMISSION_DENIED:
-                                mensajeError = "Debes permitir el acceso a la ubicación para registrar asistencia";
-                                break;
-                            case error.POSITION_UNAVAILABLE:
-                                mensajeError = "La información de ubicación no está disponible";
-                                break;
-                            case error.TIMEOUT:
-                                mensajeError = "Tiempo de espera para obtener la ubicación agotado";
-                                break;
-                            case error.UNKNOWN_ERROR:
-                                mensajeError = "Ocurrió un error desconocido";
-                                break;
-                        }
-                        resultado.innerHTML = `<p style="color:red;">❌ Error: ${mensajeError}</p>`;
-                    }
-                );
-            } else {
-                resultado.innerHTML = "<p style='color:red;'>Tu navegador no soporta geolocalización</p>";
-            }
+  <script>
+    // --- Utilidad: obtener IP pública (varios intentos) ---
+    async function getPublicIP() {
+      // Intento 1: ipify v4
+      try {
+        const r = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
+        if (r.ok) {
+          const { ip } = await r.json();
+          if (ip) return ip;
         }
-        
-        function enviarDatos(nombre, fechaHora, lat, lng) {
-            // Usaremos FormSubmit.co para enviar los datos por email
-            const formData = new FormData();
-            formData.append('nombre', nombre);
-            formData.append('fechaHora', fechaHora);
-            formData.append('ubicacion', `https://maps.google.com/?q=${lat},${lng}`);
-            formData.append('coordenadas', `${lat},${lng}`);
-            
-            fetch('https://formsubmit.co/ajax/sbalderas@arseg.com.mx', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => console.log('Datos enviados:', data))
-            .catch(error => console.error('Error:', error));
+      } catch {}
+
+      // Intento 2: ipify v6/mixto
+      try {
+        const r2 = await fetch("https://api64.ipify.org?format=json", { cache: "no-store" });
+        if (r2.ok) {
+          const { ip } = await r2.json();
+          if (ip) return ip;
         }
-    </script>
+      } catch {}
+
+      // Si todo falla:
+      return null;
+    }
+
+    // --- Geolocalización (promesa) ---
+    function getGeolocation() {
+      return new Promise((resolve, reject) => {
+        if (!("geolocation" in navigator)) {
+          reject({ code: "UNSUPPORTED", message: "Tu navegador no soporta geolocalización" });
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(pos),
+          (err) => reject(err),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      });
+    }
+
+    // --- Enviar datos por FormSubmit ---
+    async function enviarDatos({ nombre, fechaHora, lat, lng, ipPublica }) {
+      const formData = new FormData();
+      formData.append("nombre", nombre);
+      formData.append("fechaHora", fechaHora);
+      if (typeof lat === "number" && typeof lng === "number") {
+        formData.append("ubicacion", `https://maps.google.com/?q=${lat},${lng}`);
+        formData.append("coordenadas", `${lat},${lng}`);
+      } else {
+        formData.append("ubicacion", "No disponible");
+        formData.append("coordenadas", "No disponible");
+      }
+      formData.append("ip_publica", ipPublica || "No disponible");
+      formData.append("user_agent", navigator.userAgent);
+      formData.append("timezone", Intl.DateTimeFormat().resolvedOptions().timeZone || "N/D");
+
+      // (Opcional) Asunto del correo y redirección:
+      formData.append("_subject", "Nuevo registro de asistencia");
+      formData.append("_template", "table"); // FormSubmit: ver en formato tabla
+
+      const resp = await fetch("https://formsubmit.co/ajax/sbalderas@arseg.com.mx", {
+        method: "POST",
+        body: formData,
+      });
+      // No necesitamos manejar la respuesta para mostrar al usuario;
+      // pero por si acaso:
+      try {
+        const data = await resp.json();
+        console.log("FormSubmit:", data);
+      } catch (e) {
+        console.log("FormSubmit OK (sin JSON legible).");
+      }
+    }
+
+    async function registrarAsistencia() {
+      const nombre = document.getElementById("nombre").value.trim();
+      const resultado = document.getElementById("resultado");
+
+      if (!nombre) {
+        alert("Por favor ingresa tu nombre");
+        return;
+      }
+
+      const fechaHora = new Date().toLocaleString();
+      resultado.innerHTML = "<p class='muted'>Obteniendo IP y ubicación... ⌛</p>";
+
+      // Disparamos ambas cosas en paralelo
+      const ipPromise = getPublicIP();
+      const geoPromise = getGeolocation().catch(err => err); // capturamos error para no romper
+
+      // Esperamos a que ambas terminen (bien o mal)
+      const [ipRes, geoRes] = await Promise.allSettled([ipPromise, geoPromise]);
+
+      const ipPublica = ipRes.status === "fulfilled" ? ipRes.value : null;
+
+      let lat = null, lng = null, geoOk = false, geoMsg = "";
+      if (geoRes.status === "fulfilled" && geoRes.value && geoRes.value.coords) {
+        geoOk = true;
+        lat = geoRes.value.coords.latitude;
+        lng = geoRes.value.coords.longitude;
+      } else {
+        // Normalizamos mensajes de error
+        const err = geoRes.status === "rejected" ? geoRes.reason : geoRes.value;
+        if (err && typeof err === "object" && "code" in err) {
+          switch (err.code) {
+            case err.PERMISSION_DENIED:
+              geoMsg = "Debes permitir el acceso a la ubicación para registrar asistencia completa.";
+              break;
+            case err.POSITION_UNAVAILABLE:
+              geoMsg = "La información de ubicación no está disponible.";
+              break;
+            case err.TIMEOUT:
+              geoMsg = "Tiempo de espera agotado al obtener la ubicación.";
+              break;
+            default:
+              geoMsg = "Ocurrió un error al obtener la ubicación.";
+              break;
+          }
+        } else if (err && err.code === "UNSUPPORTED") {
+          geoMsg = "Tu navegador no soporta geolocalización.";
+        } else {
+          geoMsg = "No se pudo obtener la ubicación.";
+        }
+      }
+
+      // Armamos la salida al usuario
+      let html = `
+        <h3 class="ok">✅ Asistencia registrada</h3>
+        <div class="row"><strong>Nombre:</strong> ${nombre}</div>
+        <div class="row"><strong>Fecha/Hora:</strong> ${fechaHora}</div>
+        <div class="row"><strong>IP pública:</strong> ${ipPublica ? ipPublica : "No disponible"}</div>
+      `;
+
+      if (geoOk) {
+        const mapaUrl = \`https://maps.google.com/?q=\${lat},\${lng}\`;
+        html += `
+          <div class="row"><strong>Ubicación:</strong> <a href="${"${"}mapaUrl${"}"}" target="_blank" rel="noopener">Ver en mapa</a></div>
+          <div class="row">Coordenadas: ${"${"}lat.toFixed(6)${"}"}, ${"${"}lng.toFixed(6)${"}"}</div>
+        `;
+      } else {
+        html += `<div class="row error"><strong>Ubicación:</strong> ${geoMsg}</div>`;
+      }
+
+      html += `<div class="muted">Navegador: ${"${"}navigator.userAgent${"}"}</div>`;
+      resultado.innerHTML = html;
+
+      // Enviamos por email (aunque la geolocalización haya fallado, mandamos lo que tengamos)
+      try {
+        await enviarDatos({ nombre, fechaHora, lat, lng, ipPublica });
+      } catch (e) {
+        console.error("Error enviando datos:", e);
+      }
+    }
+
+    // Botón
+    document.getElementById("btn-registrar").addEventListener("click", registrarAsistencia);
+  </script>
 </body>
 </html>
