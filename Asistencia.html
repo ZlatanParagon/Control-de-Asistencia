@@ -7,11 +7,12 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 500px;
+      max-width: 640px;
       margin: 0 auto;
       padding: 20px;
       text-align: center;
     }
+    h1 { display:flex; align-items:center; gap:.5rem; justify-content:center; }
     input, button {
       padding: 10px;
       margin: 10px 0;
@@ -23,26 +24,26 @@
       color: white;
       border: none;
       cursor: pointer;
+      font-weight: 600;
     }
-    button:hover {
-      background-color: #45a049;
-    }
+    button:hover { background-color: #45a049; }
     #resultado {
       margin-top: 20px;
-      padding: 10px;
+      padding: 16px;
       background-color: #f8f8f8;
-      border-radius: 5px;
+      border-radius: 8px;
       text-align: left;
     }
-    .muted { color:#666; font-size: 12px; }
+    .muted { color:#555; font-size: 13px; }
     .error { color: #b00020; }
     .ok    { color: #0b7a0b; }
     .row   { margin: 6px 0; }
+    .k { font-weight:600; }
   </style>
 </head>
 <body>
   <h1>📅 Registro de Asistencia</h1>
-  <p>Ingresa tu nombre para registrar tu asistencia con ubicación e IP pública</p>
+  <p>Por favor ingresa tu nombre para registrar tu asistencia con ubicación e IP pública.</p>
 
   <input type="text" id="nombre" placeholder="Tu nombre completo" required />
   <button id="btn-registrar">📍 Registrar Mi Asistencia</button>
@@ -50,31 +51,72 @@
   <div id="resultado"></div>
 
   <script>
-    // --- Utilidad: obtener IP pública (varios intentos) ---
-    async function getPublicIP() {
-      // Intento 1: ipify v4
-      try {
-        const r = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
-        if (r.ok) {
-          const { ip } = await r.json();
-          if (ip) return ip;
-        }
-      } catch {}
-
-      // Intento 2: ipify v6/mixto
-      try {
-        const r2 = await fetch("https://api64.ipify.org?format=json", { cache: "no-store" });
-        if (r2.ok) {
-          const { ip } = await r2.json();
-          if (ip) return ip;
-        }
-      } catch {}
-
-      // Si todo falla:
-      return null;
+    // ---------- Utilidades ----------
+    // Timeout helper
+    function withTimeout(promise, ms = 8000) {
+      return Promise.race([
+        promise,
+        new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))
+      ]);
     }
 
-    // --- Geolocalización (promesa) ---
+    // Obtiene IP pública probando varias fuentes (por si alguna está bloqueada)
+    async function getPublicIP() {
+      // 1) ipify (v4)
+      try {
+        const r = await withTimeout(fetch("https://api.ipify.org?format=json", { cache: "no-store" }));
+        if (r.ok) {
+          const { ip } = await r.json();
+          if (ip) return { ip };
+        }
+      } catch {}
+
+      // 2) ipify (v6/mixto)
+      try {
+        const r = await withTimeout(fetch("https://api64.ipify.org?format=json", { cache: "no-store" }));
+        if (r.ok) {
+          const { ip } = await r.json();
+          if (ip) return { ip };
+        }
+      } catch {}
+
+      // 3) ipapi.co (da ip + ciudad/país/ISP sin token, con límites)
+      try {
+        const r = await withTimeout(fetch("https://ipapi.co/json/", { cache: "no-store" }));
+        if (r.ok) {
+          const j = await r.json();
+          if (j && j.ip) {
+            return {
+              ip: j.ip,
+              city: j.city, region: j.region, country: j.country_name,
+              org: j.org || j.org_name || j.asn
+            };
+          }
+        }
+      } catch {}
+
+      // 4) Cloudflare trace (texto plano)
+      try {
+        const r = await withTimeout(fetch("https://www.cloudflare.com/cdn-cgi/trace", { cache: "no-store" }));
+        if (r.ok) {
+          const text = await r.text();
+          const m = text.match(/^ip=(.+)$/m);
+          if (m) return { ip: m[1].trim() };
+        }
+      } catch {}
+
+      // 5) icanhazip (texto)
+      try {
+        const r = await withTimeout(fetch("https://icanhazip.com", { cache: "no-store" }));
+        if (r.ok) {
+          const ip = (await r.text()).trim();
+          if (ip) return { ip };
+        }
+      } catch {}
+
+      return null; // sin IP
+    }
+
     function getGeolocation() {
       return new Promise((resolve, reject) => {
         if (!("geolocation" in navigator)) {
@@ -89,8 +131,7 @@
       });
     }
 
-    // --- Enviar datos por FormSubmit ---
-    async function enviarDatos({ nombre, fechaHora, lat, lng, ipPublica }) {
+    async function enviarDatos({ nombre, fechaHora, lat, lng, ipInfo }) {
       const formData = new FormData();
       formData.append("nombre", nombre);
       formData.append("fechaHora", fechaHora);
@@ -101,48 +142,34 @@
         formData.append("ubicacion", "No disponible");
         formData.append("coordenadas", "No disponible");
       }
-      formData.append("ip_publica", ipPublica || "No disponible");
+      formData.append("ip_publica", (ipInfo && ipInfo.ip) ? ipInfo.ip : "No disponible");
+      if (ipInfo && (ipInfo.city || ipInfo.region || ipInfo.country)) {
+        formData.append("ip_detalle", `${ipInfo.city || ""} ${ipInfo.region || ""} ${ipInfo.country || ""}`.trim());
+      }
+      if (ipInfo && ipInfo.org) formData.append("ip_org", ipInfo.org);
       formData.append("user_agent", navigator.userAgent);
       formData.append("timezone", Intl.DateTimeFormat().resolvedOptions().timeZone || "N/D");
-
-      // (Opcional) Asunto del correo y redirección:
       formData.append("_subject", "Nuevo registro de asistencia");
-      formData.append("_template", "table"); // FormSubmit: ver en formato tabla
+      formData.append("_template", "table");
 
-      const resp = await fetch("https://formsubmit.co/ajax/sbalderas@arseg.com.mx", {
+      await fetch("https://formsubmit.co/ajax/sbalderas@arseg.com.mx", {
         method: "POST",
-        body: formData,
+        body: formData
       });
-      // No necesitamos manejar la respuesta para mostrar al usuario;
-      // pero por si acaso:
-      try {
-        const data = await resp.json();
-        console.log("FormSubmit:", data);
-      } catch (e) {
-        console.log("FormSubmit OK (sin JSON legible).");
-      }
     }
 
     async function registrarAsistencia() {
       const nombre = document.getElementById("nombre").value.trim();
       const resultado = document.getElementById("resultado");
-
-      if (!nombre) {
-        alert("Por favor ingresa tu nombre");
-        return;
-      }
+      if (!nombre) { alert("Por favor ingresa tu nombre"); return; }
 
       const fechaHora = new Date().toLocaleString();
       resultado.innerHTML = "<p class='muted'>Obteniendo IP y ubicación... ⌛</p>";
 
-      // Disparamos ambas cosas en paralelo
-      const ipPromise = getPublicIP();
-      const geoPromise = getGeolocation().catch(err => err); // capturamos error para no romper
+      // Ejecutar en paralelo
+      const [ipRes, geoRes] = await Promise.allSettled([ getPublicIP(), getGeolocation() ]);
 
-      // Esperamos a que ambas terminen (bien o mal)
-      const [ipRes, geoRes] = await Promise.allSettled([ipPromise, geoPromise]);
-
-      const ipPublica = ipRes.status === "fulfilled" ? ipRes.value : null;
+      const ipInfo = ipRes.status === "fulfilled" ? ipRes.value : null;
 
       let lat = null, lng = null, geoOk = false, geoMsg = "";
       if (geoRes.status === "fulfilled" && geoRes.value && geoRes.value.coords) {
@@ -150,22 +177,13 @@
         lat = geoRes.value.coords.latitude;
         lng = geoRes.value.coords.longitude;
       } else {
-        // Normalizamos mensajes de error
         const err = geoRes.status === "rejected" ? geoRes.reason : geoRes.value;
         if (err && typeof err === "object" && "code" in err) {
           switch (err.code) {
-            case err.PERMISSION_DENIED:
-              geoMsg = "Debes permitir el acceso a la ubicación para registrar asistencia completa.";
-              break;
-            case err.POSITION_UNAVAILABLE:
-              geoMsg = "La información de ubicación no está disponible.";
-              break;
-            case err.TIMEOUT:
-              geoMsg = "Tiempo de espera agotado al obtener la ubicación.";
-              break;
-            default:
-              geoMsg = "Ocurrió un error al obtener la ubicación.";
-              break;
+            case err.PERMISSION_DENIED:   geoMsg = "Debes permitir el acceso a la ubicación para registrar asistencia completa."; break;
+            case err.POSITION_UNAVAILABLE: geoMsg = "La información de ubicación no está disponible."; break;
+            case err.TIMEOUT:              geoMsg = "Tiempo de espera agotado al obtener la ubicación."; break;
+            default:                       geoMsg = "Ocurrió un error al obtener la ubicación."; break;
           }
         } else if (err && err.code === "UNSUPPORTED") {
           geoMsg = "Tu navegador no soporta geolocalización.";
@@ -174,36 +192,41 @@
         }
       }
 
-      // Armamos la salida al usuario
+      // Mostrar al usuario
       let html = `
         <h3 class="ok">✅ Asistencia registrada</h3>
-        <div class="row"><strong>Nombre:</strong> ${nombre}</div>
-        <div class="row"><strong>Fecha/Hora:</strong> ${fechaHora}</div>
-        <div class="row"><strong>IP pública:</strong> ${ipPublica ? ipPublica : "No disponible"}</div>
+        <div class="row"><span class="k">Nombre:</span> ${nombre}</div>
+        <div class="row"><span class="k">Fecha/Hora:</span> ${fechaHora}</div>
+        <div class="row"><span class="k">IP pública:</span> ${ipInfo && ipInfo.ip ? ipInfo.ip : "No disponible"}</div>
       `;
-
-      if (geoOk) {
-        const mapaUrl = \`https://maps.google.com/?q=\${lat},\${lng}\`;
-        html += `
-          <div class="row"><strong>Ubicación:</strong> <a href="${"${"}mapaUrl${"}"}" target="_blank" rel="noopener">Ver en mapa</a></div>
-          <div class="row">Coordenadas: ${"${"}lat.toFixed(6)${"}"}, ${"${"}lng.toFixed(6)${"}"}</div>
-        `;
-      } else {
-        html += `<div class="row error"><strong>Ubicación:</strong> ${geoMsg}</div>`;
+      if (ipInfo && (ipInfo.city || ipInfo.region || ipInfo.country)) {
+        html += `<div class="row"><span class="k">IP (detalle):</span> ${[ipInfo.city, ipInfo.region, ipInfo.country].filter(Boolean).join(", ")}</div>`;
+      }
+      if (ipInfo && ipInfo.org) {
+        html += `<div class="row"><span class="k">Proveedor/Org:</span> ${ipInfo.org}</div>`;
       }
 
-      html += `<div class="muted">Navegador: ${"${"}navigator.userAgent${"}"}</div>`;
+      if (geoOk) {
+        const mapaUrl = `https://maps.google.com/?q=${lat},${lng}`;
+        html += `
+          <div class="row"><span class="k">Ubicación:</span> <a href="${mapaUrl}" target="_blank" rel="noopener">Ver en mapa</a></div>
+          <div class="row">Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+        `;
+      } else {
+        html += `<div class="row error"><span class="k">Ubicación:</span> ${geoMsg}</div>`;
+      }
+
+      html += `<div class="muted">Navegador: ${navigator.userAgent}</div>`;
       resultado.innerHTML = html;
 
-      // Enviamos por email (aunque la geolocalización haya fallado, mandamos lo que tengamos)
+      // Enviar por email (si falla, no rompe la interfaz)
       try {
-        await enviarDatos({ nombre, fechaHora, lat, lng, ipPublica });
+        await enviarDatos({ nombre, fechaHora, lat, lng, ipInfo });
       } catch (e) {
         console.error("Error enviando datos:", e);
       }
     }
 
-    // Botón
     document.getElementById("btn-registrar").addEventListener("click", registrarAsistencia);
   </script>
 </body>
